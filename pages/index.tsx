@@ -1,22 +1,66 @@
+import type { GetServerSideProps } from "next";
+import type { Record } from "../types";
+
 import Image from "next/image";
+import { useRouter } from "next/router";
 import { useState } from "react";
 import { DONATION_IN_CENTS, MAX_DONATION_IN_CENTS } from "../config";
 
-export default function Home() {
+export default function Home({ donations }: { donations: Array<Record> }) {
+  const router = useRouter();
+
   const [quantity, setQuantity] = useState(1);
   const [name, setName] = useState("");
   const [message, setMessage] = useState("");
-  const [error, setError] = useState(null);
+  const [error, setError] = useState<any>(null);
 
   const presets = [1, 3, 5];
 
+  async function handleCheckout() {
+    setError(null);
+
+    const response = await fetch("/api/checkout", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        quantity,
+        name,
+        message,
+      }),
+    });
+
+    const res = await response.json();
+
+    if (res.url) {
+      const url = res.url;
+      router.push(url);
+    }
+
+    if (res.error) {
+      setError(res.error);
+    }
+  }
+
   return (
-    <main className="flex max-w-xl mx-auto my-5">
-      <div className="flex-1">
-        <h2>Previous donations</h2>
+    <main className="flex gap-5 max-w-2xl mx-auto my-5">
+      <div className="flex-1 space-y-7 p-7">
+        <h2 className="text-2xl">Previous donations</h2>
+        <ul className="space-y-3">
+          {donations.map((donation) => (
+            <li key={donation.id} className="p-4 shadow">
+              {donation.fields.name} donated ${donation.fields.amount}
+              <br />
+              {donation.fields.message}
+            </li>
+          ))}
+        </ul>
       </div>
+
       <div className="space-y-7 p-7 rounded bg-sky-50">
         <h1 className="font-semibold text-3xl">Buy me a beer</h1>
+        {error && <div className="text-red-500">{error}</div>}
         <div className="space-y-3">
           <div className="flex gap-4 items-center w-full p-7 border border-sky-300 bg-sky-200 rounded">
             <span>
@@ -77,10 +121,24 @@ export default function Home() {
             />
           </div>
         </div>
-        <button className="p-3 w-full bg-sky-600 text-sky-50 rounded enabled:hover:scale-[1.03] transition duration-300">
+        <button
+          onClick={handleCheckout}
+          className="p-3 w-full bg-sky-600 text-sky-50 rounded enabled:hover:scale-[1.03] transition duration-300"
+        >
           Donate ${(quantity * DONATION_IN_CENTS) / 100}
         </button>
       </div>
     </main>
   );
 }
+
+export const getServerSideProps: GetServerSideProps = async (ctx) => {
+  const protocol = ctx.req.headers["x-forwarded-proto"] || "http";
+  const host = ctx.req.headers.host;
+
+  const response = await fetch(`${protocol}://${host}/api/donations`);
+
+  const donations = await response.json();
+
+  return { props: { donations } };
+};
